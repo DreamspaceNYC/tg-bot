@@ -1,6 +1,6 @@
 python-telegram-bot==21.6
 faster-whisper==1.0.3
-yt-dlp==2024.06.28
+yt-dlp>=2024.7.7,<2025.0
 imageio-ffmpeg==0.4.9
 fastapi==0.115.0
 uvicorn==0.30.5
