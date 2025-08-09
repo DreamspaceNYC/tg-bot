@@ -1,17 +1,36 @@
-import os, asyncio
+import os, asyncio, threading
 from uuid import uuid4
 from pathlib import Path
 from telegram import Update, InlineKeyboardMarkup, InlineKeyboardButton
 from telegram.ext import ApplicationBuilder, CommandHandler, MessageHandler, CallbackQueryHandler, ContextTypes, filters
 from telegram.request import HTTPXRequest
+import uvicorn
+
+from .health import app as health_app
 
 from .utils import mkwork, cleanup, bytes_ok
 from .media import is_url, dl_url, try_captions
 from .transcribe import run_whisper, clean_vtt_to_txt
 
 BOT_TOKEN = os.getenv("BOT_TOKEN")
-MODEL_SIZE = os.getenv("MODEL_SIZE", "base")
-MAX_DURATION_SECS = int(os.getenv("MAX_DURATION_SECS", "5400"))
+# Prefer WHISPER_MODEL if provided, fallback to existing MODEL_SIZE
+MODEL_SIZE = os.getenv("WHISPER_MODEL", os.getenv("MODEL_SIZE", "base"))
+
+# Allow MAX_MINUTES override (converted to seconds); fallback to MAX_DURATION_SECS
+_max_minutes = os.getenv("MAX_MINUTES")
+if _max_minutes:
+    try:
+        MAX_DURATION_SECS = int(float(_max_minutes) * 60)
+    except Exception:
+        MAX_DURATION_SECS = int(os.getenv("MAX_DURATION_SECS", "5400"))
+else:
+    MAX_DURATION_SECS = int(os.getenv("MAX_DURATION_SECS", "5400"))
+
+# Max upload size in MB for Telegram sends
+MAX_MB = int(os.getenv("MAX_MB", "50"))
+
+# Health server port (default 7860 for container healthchecks)
+HEALTH_PORT = int(os.getenv("HEALTH_PORT", "7860"))
 
 SESS = {}
 
@@ -117,7 +136,7 @@ async def process_job(q, ses):
             except Exception:
                 await q.message.reply_text("Transcript ready, but sending failed.")
         if media_path and Path(media_path).exists():
-            if bytes_ok(media_path, 48):
+            if bytes_ok(media_path, MAX_MB):
                 try:
                     await q.message.reply_document(document=open(media_path, "rb"), filename=Path(media_path).name)
                 except Exception:
@@ -130,10 +149,20 @@ async def process_job(q, ses):
     finally:
         cleanup(work)
 
+def _run_health_server():
+    try:
+        uvicorn.run(health_app, host="0.0.0.0", port=HEALTH_PORT, log_level="info")
+    except Exception:
+        pass
+
+
 def main():
     token = BOT_TOKEN
     if not token:
         raise SystemExit("BOT_TOKEN missing.")
+    # Start health server in background for container/compose checks
+    t = threading.Thread(target=_run_health_server, daemon=True)
+    t.start()
     req = HTTPXRequest(connect_timeout=30, read_timeout=60, write_timeout=60, pool_timeout=30)
     app = ApplicationBuilder().token(token).request(req).build()
     app.add_handler(CommandHandler("start", start))
