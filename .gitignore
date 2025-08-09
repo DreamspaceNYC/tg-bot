@@ -24,3 +24,4 @@ processing.log
 # Node/editor cruft
 .vscode/
 .idea/
+.venv
