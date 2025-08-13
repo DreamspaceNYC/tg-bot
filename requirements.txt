@@ -1,3 +1,10 @@
+<<<<<<< HEAD
+=======
+python-telegram-bot==21.6
+faster-whisper==1.0.3
+yt-dlp>=2024.7.7,<2025.0
+imageio-ffmpeg==0.4.9
+>>>>>>> 2ac146c8e9d7f925caa28e761e205b58e2095bd6
 fastapi==0.115.0
 faster-whisper==1.0.3
 imageio-ffmpeg==0.4.9
